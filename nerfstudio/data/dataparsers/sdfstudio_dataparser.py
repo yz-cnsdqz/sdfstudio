@@ -182,11 +182,12 @@ class SDFStudio(DataParser):
         indices = list(range(len(meta["frames"])))
         # subsample to avoid out-of-memory for validation set
         if split != "train" and self.config.skip_every_for_val_split >= 1:
-            indices = indices[:: self.config.skip_every_for_val_split]
+            # indices = indices[:: self.config.skip_every_for_val_split]
+            indices = [i for i in indices if i % self.config.skip_every_for_val_split != 0]
         else:
             # if you use this option, training set should not contain any image in validation set
             if self.config.train_val_no_overlap:
-                indices = [i for i in indices if i % self.config.skip_every_for_val_split != 0]
+                indices = [i for i in indices if i % self.config.skip_every_for_val_split == 0]
 
         image_filenames = []
         depth_images = []

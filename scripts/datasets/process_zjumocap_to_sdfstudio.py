@@ -28,8 +28,9 @@ def form_transf(cam_rotmat, cam_transl):
 
 parser = argparse.ArgumentParser(description="preprocess zjumocap dataset to sdfstudio dataset")
 
-parser.add_argument("--input_path", default='/mnt/hdd/datasets/ZJUMocap/CoreView_313')
-parser.add_argument("--output_path", default='/mnt/hdd/datasets/ZJUMocap_SDFStudio/CoreView_313')
+# parser.add_argument("--input_path", default='/mnt/hdd/datasets/ZJUMocap/CoreView_313')
+# parser.add_argument("--output_path", default='/mnt/hdd/datasets/ZJUMocap_SDFStudio/CoreView_313')
+parser.add_argument("--subject", default='CoreView_313')
 parser.add_argument("--timeidx", type=int, default=0)
 parser.add_argument("--views", type=str, default='sparse')
 
@@ -44,11 +45,15 @@ parser.add_argument(
 
 args = parser.parse_args()
 
+iinput_path = '/mnt/hdd/datasets/ZJUMocap/{}'.format(args.subject)
+ooutput_path = '/mnt/hdd/datasets/ZJUMocap_SDFStudio/{}'.format(args.subject)
+
 
 
 """load and process camera"""
-data_path = args.input_path
+data_path = iinput_path
 cam_data = np.load(os.path.join(data_path, 'mediapipe_all.pkl'), allow_pickle=True)
+nt = cam_data['motion_obs'].shape[0]
 cam_rotmat_all = cam_data['cam_rotmat']
 cam_transl_all = cam_data['cam_transl']
 cam_K_all = cam_data['cam_K']
@@ -58,7 +63,7 @@ with open(os.path.join(data_path,'cam_params.json'),'r') as f:
 cam_names = np.array(cam_names)
 
 cam_ids = np.arange(len(cam_names))
-cam_ids_train = cam_ids[::2]
+cam_ids_train = cam_ids
 cam_ids_test = cam_ids[1:][::2] 
 
 cam_rotmat = cam_rotmat_all[cam_ids]
@@ -102,9 +107,9 @@ cam_K[:,:2, :] *= resize_factor
 
 
 """copy and process images"""
-output_path_train = os.path.join(args.output_path, 'train')
-output_path_test = os.path.join(args.output_path, 'test')
-input_path = args.input_path  # /mnt/hdd/datasets/ZJUMocap/CoreView_313
+output_path_train = os.path.join(ooutput_path, 'train')
+output_path_test = os.path.join(ooutput_path, 'test')
+input_path = iinput_path  # /mnt/hdd/datasets/ZJUMocap/CoreView_313
 os.makedirs(output_path_train,exist_ok=True)
 os.makedirs(output_path_test,exist_ok=True)
 
@@ -115,7 +120,7 @@ samplerate = 120
 cam_names_train = cam_names[cam_ids_train]
 mpresults = ['{}_mediapipe'.format(x) for x in cam_names_train]
 tidx = 0
-while tidx < 1000000:
+while tidx < nt:
     out_index = 0
     frames = []
     for mp in mpresults: # iteration over views
@@ -157,6 +162,7 @@ while tidx < 1000000:
     # meta data
     output_data = {
         "camera_model": "OPENCV",
+        "has_foreground_mask": True,
         "height": image_size,
         "width": image_size,
         "has_mono_prior": False,
@@ -178,65 +184,65 @@ while tidx < 1000000:
 
 
 
-"""process test data"""
-samplerate = 120
-cam_names_test = cam_names[cam_ids_test]
-mpresults = ['{}_mediapipe'.format(x) for x in cam_names_test]
-tidx = 0
-while tidx < 1000000:
-    out_index = 0
-    frames = []
-    for mp in mpresults: # iteration over views
-        img_path = os.path.join(data_path, mp, 'frames_masked/image_{:05d}.png'.format(tidx))
-        try:
-            img = cv2.imread(img_path)
-        except:
-            raise ValueError('all frames perhaps have been loaded.')
+# """process test data"""
+# samplerate = 120
+# cam_names_test = cam_names[cam_ids_test]
+# mpresults = ['{}_mediapipe'.format(x) for x in cam_names_test]
+# tidx = 0
+# while tidx < 1000000:
+#     out_index = 0
+#     frames = []
+#     for mp in mpresults: # iteration over views
+#         img_path = os.path.join(data_path, mp, 'frames_masked/image_{:05d}.png'.format(tidx))
+#         try:
+#             img = cv2.imread(img_path)
+#         except:
+#             raise ValueError('all frames perhaps have been loaded.')
         
-        img = cv2.resize(img,(512,512))
-        img_mask = (img>0).astype(int)*255
-        outputpath = os.path.join(output_path_test, '{:06d}'.format(tidx))
-        os.makedirs(outputpath, exist_ok=True)
-        cv2.imwrite(os.path.join(outputpath,'{:06d}_rgb.png'.format(out_index)),img)
-        cv2.imwrite(os.path.join(outputpath,'{:06d}_foreground_mask.png'.format(out_index)),img_mask)
+#         img = cv2.resize(img,(512,512))
+#         img_mask = (img>0).astype(int)*255
+#         outputpath = os.path.join(output_path_test, '{:06d}'.format(tidx))
+#         os.makedirs(outputpath, exist_ok=True)
+#         cv2.imwrite(os.path.join(outputpath,'{:06d}_rgb.png'.format(out_index)),img)
+#         cv2.imwrite(os.path.join(outputpath,'{:06d}_foreground_mask.png'.format(out_index)),img_mask)
         
-        frame = {
-        "rgb_path": '{:06d}_rgb.png'.format(out_index),
-        "camtoworld": poses[cam_ids_test[out_index]].tolist(),
-        "intrinsics": cam_K[cam_ids_test[out_index]].tolist(),
-        "foreground_mask": '{:06d}_foreground_mask.png'.format(out_index),
-        }
-        frames.append(frame)
-        out_index += 1
+#         frame = {
+#         "rgb_path": '{:06d}_rgb.png'.format(out_index),
+#         "camtoworld": poses[cam_ids_test[out_index]].tolist(),
+#         "intrinsics": cam_K[cam_ids_test[out_index]].tolist(),
+#         "foreground_mask": '{:06d}_foreground_mask.png'.format(out_index),
+#         }
+#         frames.append(frame)
+#         out_index += 1
 
 
-    # scene bbox for the zjumocap scene
-    scene_box = {
-        "aabb": [[-1, -1, -1], [1, 1, 1]],
-        "near": 0.05,
-        "far": 2.5,
-        "radius": 1.0,
-        "collider_type": "box",
-    }
+#     # scene bbox for the zjumocap scene
+#     scene_box = {
+#         "aabb": [[-1, -1, -1], [1, 1, 1]],
+#         "near": 0.05,
+#         "far": 2.5,
+#         "radius": 1.0,
+#         "collider_type": "box",
+#     }
 
-    # meta data
-    output_data = {
-        "camera_model": "OPENCV",
-        "height": image_size,
-        "width": image_size,
-        "has_mono_prior": False,
-        "has_sensor_depth": False,
-        "pairs": None,
-        "worldtogt": scale_mat.tolist(),
-        "scene_box": scene_box,
-    }
+#     # meta data
+#     output_data = {
+#         "camera_model": "OPENCV",
+#         "height": image_size,
+#         "width": image_size,
+#         "has_mono_prior": False,
+#         "has_sensor_depth": False,
+#         "pairs": None,
+#         "worldtogt": scale_mat.tolist(),
+#         "scene_box": scene_box,
+#     }
 
-    output_data["frames"] = frames
+#     output_data["frames"] = frames
 
-    # save as json
-    with open(os.path.join(outputpath, "meta_data.json"), "w", encoding="utf-8") as f:
-        json.dump(output_data, f, indent=4)
+#     # save as json
+#     with open(os.path.join(outputpath, "meta_data.json"), "w", encoding="utf-8") as f:
+#         json.dump(output_data, f, indent=4)
 
 
-    tidx += samplerate
+#     tidx += samplerate
 
