@@ -1,3 +1,9 @@
+# user specific ignore
+output.json
+output_images/
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
