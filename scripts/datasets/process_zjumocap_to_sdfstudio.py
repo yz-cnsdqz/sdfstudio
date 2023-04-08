@@ -46,8 +46,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 iinput_path = '/mnt/hdd/datasets/ZJUMocap/{}'.format(args.subject)
-ooutput_path = '/mnt/hdd/datasets/ZJUMocap_SDFStudio/{}'.format(args.subject)
-
+iinput_mocap_path = '/mnt/hdd/datasets/ZJUMocap/lisst_20230221/{}.pkl'.format(args.subject)
+ooutput_path = '/mnt/hdd/datasets/ZJUMocap_SDFStudio_nomask/{}'.format(args.subject)
 
 
 """load and process camera"""
@@ -73,23 +73,10 @@ cam_K = cam_K_all[cam_ids]
 poses = np.linalg.inv(form_transf(cam_rotmat, cam_transl)) # cam2world camera poses
 
 
-"""process camera extrinsics"""
-min_vertices = poses[:, :3, 3].min(axis=0)
-max_vertices = poses[:, :3, 3].max(axis=0)
+"""load and process body pose. We use the estimated joint locations to normalize individual frames."""
+lisst_mocap = np.load(iinput_mocap_path, allow_pickle=True)
+J_locs_3d = lisst_mocap['J_locs_3d'] #[t,J,3]
 
-center = (min_vertices + max_vertices) / 2.0
-scale = 2.0 / (np.max(max_vertices - min_vertices) + 3.0)
-print(center, scale)
-
-# we should normalize pose to unit cube
-poses[:, :3, 3] -= center
-poses[:, :3, 3] *= scale
-
-# inverse normalization
-scale_mat = np.eye(4).astype(np.float32)
-scale_mat[:3, 3] -= center
-scale_mat[:3] *= scale
-scale_mat = np.linalg.inv(scale_mat)
 
 """process camera intrinsics"""
 H, W = 1024, 1024
@@ -121,11 +108,31 @@ cam_names_train = cam_names[cam_ids_train]
 mpresults = ['{}_mediapipe'.format(x) for x in cam_names_train]
 tidx = 0
 while tidx < nt:
+    """process camera extrinsics according to the scale"""
+    min_vertices = J_locs_3d[tidx].min(axis=0)
+    max_vertices = J_locs_3d[tidx].max(axis=0)
+
+    center = (min_vertices + max_vertices) / 2.0
+    scale = 2.0 / (np.max(max_vertices - min_vertices) + 0.5) # +3.0 in the old script
+    # print(center, scale)
+
+    # we should normalize pose to unit cube
+    poses_ = poses.copy()
+    poses_[:, :3, 3] -= center
+    poses_[:, :3, 3] *= scale
+
+    # inverse normalization
+    scale_mat = np.eye(4).astype(np.float32)
+    scale_mat[:3, 3] -= center
+    scale_mat[:3] *= scale
+    scale_mat = np.linalg.inv(scale_mat)
+    
+    """process frames"""
     out_index = 0
     frames = []
     for mp in mpresults: # iteration over views
         img_path_mask = os.path.join(data_path, mp, 'frames_masked/image_{:05d}.png'.format(tidx))
-        img_path = os.path.join(data_path, mp, 'frames_masked/image_{:05d}.png'.format(tidx))
+        img_path = os.path.join(data_path, mp, 'frames/image_{:05d}.png'.format(tidx))
         try:
             img = cv2.imread(img_path)
             img_mask = cv2.imread(img_path_mask)
@@ -142,13 +149,12 @@ while tidx < nt:
         
         frame = {
         "rgb_path": '{:06d}_rgb.png'.format(out_index),
-        "camtoworld": poses[cam_ids_train[out_index]].tolist(),
+        "camtoworld": poses_[cam_ids_train[out_index]].tolist(),
         "intrinsics": cam_K[cam_ids_train[out_index]].tolist(),
         "foreground_mask": '{:06d}_foreground_mask.png'.format(out_index),
         }
         frames.append(frame)
         out_index += 1
-
 
     # scene bbox for the zjumocap scene
     scene_box = {

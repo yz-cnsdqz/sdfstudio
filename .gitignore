@@ -1,7 +1,7 @@
 # user specific ignore
 output.json
 output_images/
-
+exp*
 
 
 # Byte-compiled / optimized / DLL files
